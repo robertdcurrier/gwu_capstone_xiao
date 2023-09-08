@@ -3,7 +3,7 @@
 
 ## What it does
 
-* Built as Docker Stack with three containers
+* Built to run under GANDALF Docker container 'tools'
 * Retrieves ARGO platform data from Argovis servers 
 * Processes platform data and creates feature collections
 * Creates plots for physical and biological sensors
