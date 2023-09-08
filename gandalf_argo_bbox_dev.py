@@ -14,6 +14,7 @@ import gsw
 import gc
 import logging
 import time
+import datetime
 import multiprocessing as mp
 import numpy as np
 import pandas as pd
@@ -31,7 +32,7 @@ from argovisHelpers import helpers as avh
 ROOT_DIR = ''
 API_KEY = ''  # get api key: https://argovis-keygen.colorado.edu/ and set your own api key here
 polygon = [[-55, 33], [-100, 30], [-96, 16], [-55, 13], [-55, 33]]  # change to the real polygon
-using_multiprocess = False
+using_multiprocess = True
 
 
 def register_cmocean():
@@ -84,13 +85,13 @@ def get_platform_profiles(platform_number):
     for i in range(3):
         time.sleep(random.random()*5)
         resp = requests.get(url)
-        if resp.status_code != 200:
+        if resp.status_code == 200:
             logging.warning('get_platform_profiles(%d): Response status %d',
                             platform_number, resp.status_code)
             break
     else:  # finish the for loop without break, means the response is not good after retry
         logging.debug('get_platform_profiles(): Unexpected response {}'.format(resp))
-    return False
+        return False
 
     # 2023-09-06 added try/except robertdcurrier@gmail.com
     try:
@@ -568,12 +569,15 @@ def get_bbox_platforms():
     """
     logging.warning('get_bbox_platforms(): Fetching platform data from argovis API')
     API_ROOT = 'https://argovis-api.colorado.edu/' #<--- TO CONFIG FILE
-    startDate = '2023-09-01T00:00:00.000Z' #<--- TO CONFIG FILE
+
+    date_30_days_ago = datetime.date.today() - datetime.timedelta(days=30)
+    startDate = date_30_days_ago.strftime('%Y-%m-%d') + 'T00:00:00.000Z'  ## format example: '2023-09-01T00:00:00.000Z' #<--- TO CONFIG FILE
 
     dataQuery = {
         'polygon': polygon,
         'compression': 'minimal',
-        'startDate': startDate
+        'startDate': startDate,
+        # 'endDate': endDate,  # if also need the endDate
     }
 
 
