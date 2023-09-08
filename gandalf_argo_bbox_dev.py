@@ -2,9 +2,8 @@
 """
 Author:     robertdcurrier@gmail.com
 Created:    2020-07-27
-Modified:   2020-10-26
-Notes:      Moved to production. Getting feedback from users.
-            2020-10-26: Migrated to logging and multiprocessing
+Modified:   2023-09-08
+Notes:      Code for bbox and mp by xiao2022@gwmail.gwu.edu (Xiao Qi)
 """
 import json
 import random
@@ -562,12 +561,12 @@ def get_bbox_platforms():
     """
     Created:  2023-09-01
     Modified: 2023-09-07
-    Author:   xiao2022@gwmail.gwu.edu
+    Author:   xiao2022@gwmail.gwu.edu (Xiao Qi)
     Notes:    Argovis API V2 bbox query
     """
     logging.warning('get_bbox_platforms(): Fetching platform data from argovis API')
-    API_ROOT = 'https://argovis-api.colorado.edu/'
-    startDate = '2023-09-01T00:00:00.000Z'
+    API_ROOT = 'https://argovis-api.colorado.edu/' #<--- TO CONFIG FILE
+    startDate = '2023-09-01T00:00:00.000Z' #<--- TO CONFIG FILE
 
     dataQuery = {
         'polygon': polygon,
