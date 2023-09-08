@@ -2,8 +2,9 @@
 """
 Author:     robertdcurrier@gmail.com
 Created:    2020-07-27
-Modified:   2023-09-08
-Notes:      Code for bbox and mp by xiao2022@gwmail.gwu.edu (Xiao Qi)
+Modified:   2020-10-26
+Notes:      Moved to production. Getting feedback from users.
+            2020-10-26: Migrated to logging and multiprocessing
 """
 import json
 import random
@@ -25,13 +26,14 @@ from decimal import getcontext, Decimal
 from calendar import timegm
 from geojson import LineString, FeatureCollection, Feature, Point
 from pandas.plotting import register_matplotlib_converters
+# from gandalf_utils import get_vehicle_config, get_sensor_config, flight_status
+
 from argovisHelpers import helpers as avh
 
 # THESE SETTINGS NEED TO COME FROM CONFIG FILE EVENTUALLY
 ROOT_DIR = ''
 API_KEY = ''  # get api key: https://argovis-keygen.colorado.edu/ and set your own api key here
 polygon = [[-55, 33], [-100, 30], [-96, 16], [-55, 13], [-55, 33]]  # change to the real polygon
-using_multiprocess = True
 
 
 def register_cmocean():
@@ -78,20 +80,14 @@ def get_platform_profiles(platform_number):
     # TO DO  config file for argovis url 2023-03-03 updated URL
     url = ('https://argovisbeta02.colorado.edu/catalog/platforms/{}'.
            format(platform_number))
-    logging.info('get_platform_profiles(%s)' % url)
-
-    # for every request, if the response status code is not 2xx, try two more times
-    for i in range(3):
-        time.sleep(random.random()*5)
-        resp = requests.get(url)
-        if resp.status_code != 200:
-            logging.warning('get_platform_profiles(%d): Response status %d',
-                            platform_number, resp.status_code)
-            break
-    else:  # finish the for loop without break, means the response is not good after retry
+    logging.debug('get_platform_profiles(%s)' % url)
+    time.sleep(1)
+    resp = requests.get(url)
+    # Consider any status other than 2xx an error
+    logging.info(f'response status is {resp.status_code}')
+    if not resp.status_code // 100 == 2:
         logging.debug('get_platform_profiles(): Unexpected response {}'.format(resp))
-    return False
-
+        return False
     # 2023-09-06 added try/except robertdcurrier@gmail.com
     try:
         platformProfiles = resp.json()
@@ -138,6 +134,23 @@ def profiles_to_df(profiles):
     logging.debug("profiles_to_df(): After sorting newest date: %s oldest date: %s" %
           (most_recent_date, oldest_date))
     return data_frame
+
+
+def dinkum_convert(dinkum_num):
+    """
+    Author:     bob.currier@gcoos.org
+    Created:    2015-07-22
+    Modified:   2015-07-22
+    Inputs:     lon, lat in dddd.mm
+    Outputs:    lon, lat in dd.ddd
+    """
+    logging.debug('dinkum_convert(%0.4f)' % dinkum_num)
+    getcontext().prec = 6
+    dinkum_num = Decimal(dinkum_num)
+    dinkum_int = int((dinkum_num / Decimal(100.0)))
+    dddd = Decimal((dinkum_int + (dinkum_num - (dinkum_int * 100)) /
+                    Decimal(60.0)))
+    return float(dddd)
 
 
 def get_cmocean_name(sensor):
@@ -465,7 +478,7 @@ def write_geojson_file(data):
     Notes: writes out feature collection
     """
     fname = (ROOT_DIR + "/data/gandalf/deployments/geojson/argo.json")
-    logging.warning("write_geojson(): Writing %s" % fname)
+    logging.info("write_geojson(): Writing %s" % fname)
     outf = open(fname,'w')
     outf.write(str(data))
     outf.close()
@@ -474,16 +487,12 @@ def write_geojson_file(data):
 def build_argo_plots(platform):
     """
     Created:  2020-06-05
-    Modified: 2022-09-08
+    Modified: 2020-10-26
     Author:   robertdcurrier@gmail.com
     Notes:    writes out feature collection
     """
-    # because of multiprocessing, check if the value has been registered
-    if 'thermal' not in plt.colormaps():
-        register_cmocean()
-
     argo_sensors = ['temp', 'psal']
-    logging.warning('build_argo_plots(): Processing platform %d' % platform)
+    logging.info('build_argo_plots(): Processing platform %d' % platform)
     platform_profiles = get_platform_profiles(platform)
     # Only do this if we get good data...
     if platform_profiles:
@@ -500,7 +509,7 @@ def build_argo_plots(platform):
 
         logging.debug('Dropping NaNs...')
         slim_df = slim_df.dropna()
-        logging.info("build_argo_plots(): slim_df now has %d rows" % len(slim_df))
+        logging.info("slim_df now has %d rows" % len(slim_df))
         add_z(slim_df)
 
         if 'psal' in slim_df.columns:
@@ -527,46 +536,38 @@ def argo_process():
     logging.info('argo_process(): Registering helpers')
     # register helpers
     register_matplotlib_converters()
+    register_cmocean()
     # get platform list from v2 api using polygon
-    platform_list = get_bbox_platforms()
+    platform_list = get_bbox_floats()
     num_platforms = len(platform_list)
-    logging.warning('argo_process(): Argovis returned %d platforms', num_platforms)
+    logging.info('argo_process(): Argovis returned %d floats', num_platforms)
 
     argo_features = []
     platform_count = 0
 
-    if using_multiprocess:
-        with mp.Pool(processes=8) as pool:
-            argo_features = pool.map(build_argo_plots, platform_list)
-
-        # Save only meaningful data and exclude useless data (like return False).
-        argo_features = [feature for feature in argo_features if feature]
-        logging.info('argo_process(): Argovis processed %d platforms', len(argo_features))
-    else:
-        for platform in platform_list:
-            remaining_platforms = num_platforms-platform_count
-            logging.warning('argo_process(): %d platforms remaining',
-                         remaining_platforms)
-            results = build_argo_plots(platform)
-            if results:
-                argo_features.append(results)
-            else:
-                logging.warning('argo_process(): %d returned false', platform)
-            platform_count+=1
-
+    for platform in platform_list:
+        remaining_platforms = num_platforms-platform_count
+        logging.info('argo_process(): %d platforms remaining',
+                     remaining_platforms)
+        results = build_argo_plots(platform)
+        if results:
+            argo_features.append(results)
+        else:
+            logging.warning('argo_process(): %d returned false', platform)
+        platform_count+=1
     write_geojson_file(argo_features)
 
 
-def get_bbox_platforms():
+def get_bbox_floats():
     """
     Created:  2023-09-01
-    Modified: 2023-09-07
-    Author:   xiao2022@gwmail.gwu.edu (Xiao Qi)
+    Modified: 2023-09-05
+    Author:   xiao2022@gwmail.gwu.edu
     Notes:    Argovis API V2 bbox query
     """
-    logging.warning('get_bbox_platforms(): Fetching platform data from argovis API')
-    API_ROOT = 'https://argovis-api.colorado.edu/' #<--- TO CONFIG FILE
-    startDate = '2023-09-01T00:00:00.000Z' #<--- TO CONFIG FILE
+    logging.info('get_bbox_floats(): Fetching float data from argovis API')
+    API_ROOT = 'https://argovis-api.colorado.edu/'
+    startDate = '2023-09-01T00:00:00.000Z'
 
     dataQuery = {
         'polygon': polygon,
@@ -584,18 +585,20 @@ def get_bbox_platforms():
         if platform.isnumeric():
             platform_set.add(int(platform))
         else:
-            logging.info('get_bbox_platforms(): %s cannot be added.', profile)
+            logging.info('get_bbox_floats(): %s cannot be added.', profile)
 
-    num_platforms = len(platform_set)
-    logging.info('get_bbox_platforms(): Found %d platforms', num_platforms)
-    logging.info('get_bbox_platforms(): Platform list is %s', platform_set)
+    # platform_list = set(int(profile[0].split('_')[0]) for profile in profiles)
+
+    num_floats = len(platform_set)
+    logging.info('get_bbox_floats(): Found %d floats', num_floats)
+    logging.info('get_bbox_floats(): Platform list is %s', platform_set)
 
     return list(platform_set)
 
 
 if __name__ == '__main__':
     # Need to add argparse so we can do singles without editing...
-    logging.basicConfig(level=logging.WARNING)
+    logging.basicConfig(level=logging.INFO)
     start_time = time.time()
     argo_process()
     end_time = time.time()

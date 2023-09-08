@@ -31,7 +31,7 @@ from argovisHelpers import helpers as avh
 ROOT_DIR = ''
 API_KEY = ''  # get api key: https://argovis-keygen.colorado.edu/ and set your own api key here
 polygon = [[-55, 33], [-100, 30], [-96, 16], [-55, 13], [-55, 33]]  # change to the real polygon
-using_multiprocess = True
+using_multiprocess = False
 
 
 def register_cmocean():
@@ -548,6 +548,8 @@ def argo_process():
             logging.warning('argo_process(): %d platforms remaining',
                          remaining_platforms)
             results = build_argo_plots(platform)
+            print(results)
+            sys.exit()
             if results:
                 argo_features.append(results)
             else:
