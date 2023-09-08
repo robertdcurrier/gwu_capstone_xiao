@@ -14,7 +14,6 @@ import gsw
 import gc
 import logging
 import time
-import datetime
 import multiprocessing as mp
 import numpy as np
 import pandas as pd
@@ -33,8 +32,6 @@ ROOT_DIR = ''
 API_KEY = ''  # get api key: https://argovis-keygen.colorado.edu/ and set your own api key here
 polygon = [[-55, 33], [-100, 30], [-96, 16], [-55, 13], [-55, 33]]  # change to the real polygon
 using_multiprocess = True
-dataDays = 30
-# END GLOBALS
 
 
 def register_cmocean():
@@ -87,13 +84,13 @@ def get_platform_profiles(platform_number):
     for i in range(3):
         time.sleep(random.random()*5)
         resp = requests.get(url)
-        if resp.status_code == 200:
-            logging.info('get_platform_profiles(%d): Response status %d',
+        if resp.status_code != 200:
+            logging.warning('get_platform_profiles(%d): Response status %d',
                             platform_number, resp.status_code)
             break
     else:  # finish the for loop without break, means the response is not good after retry
         logging.debug('get_platform_profiles(): Unexpected response {}'.format(resp))
-        return False
+    return False
 
     # 2023-09-06 added try/except robertdcurrier@gmail.com
     try:
@@ -241,7 +238,7 @@ def add_z(data_frame):
     return data_frame
 
 
-def get_last_profile(platform, platform_profiles):
+def get_last_profile(platform_profiles):
     """
     Created: 2020-07-03
     Modified: 2020-07-03
@@ -255,8 +252,7 @@ def get_last_profile(platform, platform_profiles):
     last_profile['lat'] = platform_profiles[0]['lat']
     last_profile['lon'] = platform_profiles[0]['lon']
     last_profile['date'] = platform_profiles[0]['date']
-    logging.warning('get_last_profile(%s): Last Date is %s', 
-                    platform, platform_profiles[0]['date'])
+    logging.warning('get_last_profile(): Last Date is %s' % platform_profiles[0]['date'])
     return last_profile
 
 
@@ -491,7 +487,7 @@ def build_argo_plots(platform):
     platform_profiles = get_platform_profiles(platform)
     # Only do this if we get good data...
     if platform_profiles:
-        last_profile = get_last_profile(platform, platform_profiles)
+        last_profile = get_last_profile(platform_profiles)
         add_z(last_profile)
         slim_df = profiles_to_df(platform_profiles)
 
@@ -570,16 +566,12 @@ def get_bbox_platforms():
     """
     logging.warning('get_bbox_platforms(): Fetching platform data from argovis API')
     API_ROOT = 'https://argovis-api.colorado.edu/' #<--- TO CONFIG FILE
-
-    date_30_days_ago = datetime.date.today() - datetime.timedelta(days=dataDays)
-    startDate = date_30_days_ago.strftime('%Y-%m-%d') + 'T00:00:00.000Z' 
-    ## format example: '2023-09-01T00:00:00.000Z' #<--- TO CONFIG FILE
+    startDate = '2023-09-01T00:00:00.000Z' #<--- TO CONFIG FILE
 
     dataQuery = {
         'polygon': polygon,
         'compression': 'minimal',
-        'startDate': startDate,
-        # 'endDate': endDate,  # if also need the endDate
+        'startDate': startDate
     }
 
 

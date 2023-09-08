@@ -33,6 +33,9 @@ ROOT_DIR = ''
 API_KEY = ''  # get api key: https://argovis-keygen.colorado.edu/ and set your own api key here
 polygon = [[-55, 33], [-100, 30], [-96, 16], [-55, 13], [-55, 33]]  # change to the real polygon
 using_multiprocess = True
+dataDays = 30
+numProcesses = 8
+# END GLOBALS
 
 
 def register_cmocean():
@@ -86,7 +89,7 @@ def get_platform_profiles(platform_number):
         time.sleep(random.random()*5)
         resp = requests.get(url)
         if resp.status_code == 200:
-            logging.warning('get_platform_profiles(%d): Response status %d',
+            logging.info('get_platform_profiles(%d): Response status %d',
                             platform_number, resp.status_code)
             break
     else:  # finish the for loop without break, means the response is not good after retry
@@ -239,7 +242,7 @@ def add_z(data_frame):
     return data_frame
 
 
-def get_last_profile(platform_profiles):
+def get_last_profile(platform, platform_profiles):
     """
     Created: 2020-07-03
     Modified: 2020-07-03
@@ -253,7 +256,8 @@ def get_last_profile(platform_profiles):
     last_profile['lat'] = platform_profiles[0]['lat']
     last_profile['lon'] = platform_profiles[0]['lon']
     last_profile['date'] = platform_profiles[0]['date']
-    logging.warning('get_last_profile(): Last Date is %s' % platform_profiles[0]['date'])
+    logging.warning('get_last_profile(%s): Last Date is %s', 
+                    platform, platform_profiles[0]['date'])
     return last_profile
 
 
@@ -488,7 +492,7 @@ def build_argo_plots(platform):
     platform_profiles = get_platform_profiles(platform)
     # Only do this if we get good data...
     if platform_profiles:
-        last_profile = get_last_profile(platform_profiles)
+        last_profile = get_last_profile(platform, platform_profiles)
         add_z(last_profile)
         slim_df = profiles_to_df(platform_profiles)
 
@@ -537,7 +541,7 @@ def argo_process():
     platform_count = 0
 
     if using_multiprocess:
-        with mp.Pool(processes=8) as pool:
+        with mp.Pool(processes=numProcesses) as pool:
             argo_features = pool.map(build_argo_plots, platform_list)
 
         # Save only meaningful data and exclude useless data (like return False).
@@ -549,8 +553,6 @@ def argo_process():
             logging.warning('argo_process(): %d platforms remaining',
                          remaining_platforms)
             results = build_argo_plots(platform)
-            print(results)
-            sys.exit()
             if results:
                 argo_features.append(results)
             else:
@@ -570,8 +572,9 @@ def get_bbox_platforms():
     logging.warning('get_bbox_platforms(): Fetching platform data from argovis API')
     API_ROOT = 'https://argovis-api.colorado.edu/' #<--- TO CONFIG FILE
 
-    date_30_days_ago = datetime.date.today() - datetime.timedelta(days=30)
-    startDate = date_30_days_ago.strftime('%Y-%m-%d') + 'T00:00:00.000Z'  ## format example: '2023-09-01T00:00:00.000Z' #<--- TO CONFIG FILE
+    date_30_days_ago = datetime.date.today() - datetime.timedelta(days=dataDays)
+    startDate = date_30_days_ago.strftime('%Y-%m-%d') + 'T00:00:00.000Z' 
+    ## format example: '2023-09-01T00:00:00.000Z' #<--- TO CONFIG FILE
 
     dataQuery = {
         'polygon': polygon,
