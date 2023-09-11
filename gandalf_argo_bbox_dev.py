@@ -134,12 +134,12 @@ def profiles_to_df(profiles):
     oldest_date = data_frame.iloc[-1]['date']
     logging.debug("profiles_to_df(): Before sorting newest date: %s oldest date: %s" %
           (most_recent_date, oldest_date))
-    logging.debug('profiles_to_df(): data_frame has %d rows' % len(data_frame))
-    logging.debug('profiles_to_df(): Sorting data_frame by date DESC... just to be sure')
+    logging.warning('profiles_to_df(): data_frame has %d rows' % len(data_frame))
+    logging.warning('profiles_to_df(): Sorting data_frame by date DESC... just to be sure')
     data_frame = data_frame.sort_values(by=['date'], ascending=False)
     most_recent_date = data_frame.iloc[0]['date']
     oldest_date = data_frame.iloc[-1]['date']
-    logging.debug("profiles_to_df(): After sorting newest date: %s oldest date: %s" %
+    logging.warning("profiles_to_df(): After sorting newest date: %s oldest date: %s" %
           (most_recent_date, oldest_date))
     return data_frame
 
@@ -408,7 +408,6 @@ def argo_surface_marker(platform, slim_df):
         coords.append(point)
 
     most_recent = slim_df.iloc[0]
-    date = most_recent['date']
 
     lat = most_recent['lat']
     lon = most_recent['lon']
