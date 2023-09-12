@@ -14,13 +14,15 @@ import gsw
 import gc
 import logging
 import time
-import datetime
 import multiprocessing as mp
 import numpy as np
 import pandas as pd
 import seawater as sw
 import plotly.express as px
 import matplotlib.pyplot as plt
+import datetime
+from datetime import date
+from datetime import timedelta
 from matplotlib import dates as mpd
 from decimal import getcontext, Decimal
 from calendar import timegm
@@ -34,6 +36,8 @@ API_KEY = ''  # get api key: https://argovis-keygen.colorado.edu/ and set your o
 polygon = [[-55, 33], [-100, 30], [-96, 16], [-55, 13], [-55, 33]]  # change to the real polygon
 using_multiprocess = True
 dataDays = 30
+numProcesses = 8
+date_cutoff = 21
 # END GLOBALS
 
 
@@ -129,17 +133,6 @@ def profiles_to_df(profiles):
         profileDf['lon'] = profile['lon']
         profileDf['date'] = profile['date']
         data_frame = pd.concat([data_frame, profileDf], sort=False)
-    most_recent_date = data_frame.iloc[0]['date']
-    oldest_date = data_frame.iloc[-1]['date']
-    logging.debug("profiles_to_df(): Before sorting newest date: %s oldest date: %s" %
-          (most_recent_date, oldest_date))
-    logging.debug('profiles_to_df(): data_frame has %d rows' % len(data_frame))
-    logging.debug('profiles_to_df(): Sorting data_frame by date DESC... just to be sure')
-    data_frame = data_frame.sort_values(by=['date'], ascending=False)
-    most_recent_date = data_frame.iloc[0]['date']
-    oldest_date = data_frame.iloc[-1]['date']
-    logging.debug("profiles_to_df(): After sorting newest date: %s oldest date: %s" %
-          (most_recent_date, oldest_date))
     return data_frame
 
 
@@ -255,7 +248,7 @@ def get_last_profile(platform, platform_profiles):
     last_profile['lat'] = platform_profiles[0]['lat']
     last_profile['lon'] = platform_profiles[0]['lon']
     last_profile['date'] = platform_profiles[0]['date']
-    logging.warning('get_last_profile(%s): Last Date is %s', 
+    logging.info('get_last_profile(%s): Last Date is %s', 
                     platform, platform_profiles[0]['date'])
     return last_profile
 
@@ -402,12 +395,19 @@ def argo_surface_marker(platform, slim_df):
     logging.info('argo_surface_marker(%s): creating surface marker' % platform)
     coords = []
     features = []
+    today = datetime.datetime.today()
     for index, row in slim_df.iterrows():
         point = Point([row['lon'], row['lat']])
         coords.append(point)
-
+    slim_df = slim_df.sort_values(by=['date'], ascending=False)
     most_recent = slim_df.iloc[0]
-    date = most_recent['date']
+    last_date = datetime.datetime.strptime(most_recent['date'],"%Y-%m-%d")
+    delta = (today - last_date)
+    delta_days = delta.days 
+    if delta_days > date_cutoff:
+        logging.warning('argo_surface_marker(%s): Stale data. Not appending.',
+                        platform)
+        return
 
     lat = most_recent['lat']
     lon = most_recent['lon']
@@ -455,9 +455,11 @@ def argo_surface_marker(platform, slim_df):
                 <img class = 'infoBoxPlotImage' src = '%s'></img>
             </a>
         </div>
-        """ % (platform, pi, most_recent['date'], lon, lat, t_last, t_last,
+        """ % (platform, pi, last_date, lon, lat, t_last, t_last,
                s_last, s_last, t_plot, t_plot, s_plot, s_plot)
     features.append(surf_marker)
+    logging.info('argo_surface_marker(%s): Most Recent Date is %s',
+                    platform, last_date)
     return features
 
 
@@ -540,7 +542,7 @@ def argo_process():
     platform_count = 0
 
     if using_multiprocess:
-        with mp.Pool(processes=8) as pool:
+        with mp.Pool(processes=numProcesses) as pool:
             argo_features = pool.map(build_argo_plots, platform_list)
 
         # Save only meaningful data and exclude useless data (like return False).
@@ -573,7 +575,7 @@ def get_bbox_platforms():
 
     date_30_days_ago = datetime.date.today() - datetime.timedelta(days=dataDays)
     startDate = date_30_days_ago.strftime('%Y-%m-%d') + 'T00:00:00.000Z' 
-    ## format example: '2023-09-01T00:00:00.000Z' #<--- TO CONFIG FILE
+    ## format example: '2023-09-01T00:00:00.000Z'
 
     dataQuery = {
         'polygon': polygon,
